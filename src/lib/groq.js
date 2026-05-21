@@ -1,38 +1,117 @@
-const API_URL = "https://api.groq.ai/v1/models/groq-1.5.3/outputs";
-const KEY = import.meta.env.VITE_GROQ_API_KEY;
+// ✅ CORRECT Groq API URL and format
+const API_URL = "https://api.groq.com/openai/v1/chat/completions";
+const MODEL   = "llama-3.3-70b-versatile";
+const KEY     = import.meta.env.VITE_GROQ_API_KEY;
 
 const difficultyGuide = {
-  simple: "Use plain language. Short sentences. Basic concepts only. Good for beginners.",
+  simple:   "Use plain language. Short sentences. Basic concepts only. Good for beginners.",
   standard: "Balanced depth. Clear explanations. Include examples.",
-  deep: "Advanced depth. Include edge cases, nuances, and connections between concepts.",
+  deep:     "Advanced depth. Include edge cases, nuances, and connections between concepts.",
 };
 
 export const digestNotes = async (notes, difficulty, customInstructions) => {
-  const prompt = `You are an expert academic study assistant.\nAnalyze these lecture notes and return ONLY valid JSON, no explanation, no markdown fences.\n\nDifficulty level: ${difficulty}\nInstruction: ${difficultyGuide[difficulty]}\n${customInstructions ? `Extra instructions: ${customInstructions}` : ""}\n\nLECTURE NOTES:\n"""\n${notes}\n"""\n\nReturn EXACTLY this JSON structure:\n{\n  "subject": "<auto-detect subject e.g. Biology, History, Physics>",\n  "topic": "<specific topic from notes>",\n  "word_count": <integer>,\n  "summary": {\n    "overview": "<2-3 sentence high-level overview>",\n    "key_concepts": [\n      {\n        "term": "<concept name>",\n        "explanation": "<clear explanation>",\n        "importance": "<high|medium|low>"\n      }\n    ],\n    "key_facts": [\n      "<important fact 1>",\n      "<important fact 2>",\n      "<important fact 3>",\n      "<important fact 4>",\n      "<important fact 5>"\n    ],\n    "takeaway": "<single most important thing to remember>"\n  },\n  "quiz": {\n    "questions": [\n      {\n        "id": "<unique string>",\n        "type": "multiple_choice",\n        "question": "<question text>",\n        "options": ["<A>", "<B>", "<C>", "<D>"],\n        "correct": <0-3 index>,\n        "explanation": "<why this answer is correct>",\n        "difficulty": "<easy|medium|hard>"\n      },\n      {\n        "id": "<unique string>",\n        "type": "true_false",\n        "question": "<statement>",\n        "options": ["True", "False"],\n        "correct": <0 or 1>,\n        "explanation": "<explanation>",\n        "difficulty": "<easy|medium|hard>"\n      }\n    ]\n  },\n  "flashcards": [\n    {\n      "id": "<unique string>",\n      "term": "<term or concept>",\n      "definition": "<clear definition>",\n      "example": "<practical example>",\n      "hint": "<memory hint or mnemonic>"\n    }\n  ]\n}\n\nRules:\n- Generate 8 quiz questions minimum (mix of multiple_choice and true_false)\n- Generate 10 flashcards minimum\n- key_concepts should have 5-8 items\n- All content must come directly from the notes provided\n- JSON must be valid and parseable`;
-
-  const response = await fetch(API_URL, {
+  const res = await fetch(API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${KEY}`,
+      "Authorization": `Bearer ${KEY}`,
     },
     body: JSON.stringify({
-      input: prompt,
-      max_output_tokens: 1200,
+      model: MODEL,
+      temperature: 0.7,
+      max_tokens: 4000,
+      messages: [
+        {
+          role: "system",
+          content: "You are an expert academic study assistant. Always respond with valid JSON only. No explanation, no markdown fences, no extra text.",
+        },
+        {
+          role: "user",
+          content: `Analyze these lecture notes and return ONLY valid JSON.
+
+Difficulty: ${difficulty}
+Instruction: ${difficultyGuide[difficulty]}
+${customInstructions ? `Extra: ${customInstructions}` : ""}
+
+LECTURE NOTES:
+"""
+${notes}
+"""
+
+Return EXACTLY this JSON:
+{
+  "subject": "<auto-detect subject>",
+  "topic": "<specific topic>",
+  "word_count": <integer>,
+  "summary": {
+    "overview": "<2-3 sentence overview>",
+    "key_concepts": [
+      {
+        "term": "<concept>",
+        "explanation": "<explanation>",
+        "importance": "<high|medium|low>"
+      }
+    ],
+    "key_facts": ["<fact 1>", "<fact 2>", "<fact 3>", "<fact 4>", "<fact 5>"],
+    "takeaway": "<single most important thing>"
+  },
+  "quiz": {
+    "questions": [
+      {
+        "id": "<unique string>",
+        "type": "multiple_choice",
+        "question": "<question>",
+        "options": ["<A>", "<B>", "<C>", "<D>"],
+        "correct": <0-3>,
+        "explanation": "<why correct>",
+        "difficulty": "<easy|medium|hard>"
+      },
+      {
+        "id": "<unique string>",
+        "type": "true_false",
+        "question": "<statement>",
+        "options": ["True", "False"],
+        "correct": <0 or 1>,
+        "explanation": "<explanation>",
+        "difficulty": "<easy|medium|hard>"
+      }
+    ]
+  },
+  "flashcards": [
+    {
+      "id": "<unique string>",
+      "term": "<term>",
+      "definition": "<definition>",
+      "example": "<example>",
+      "hint": "<memory hint>"
+    }
+  ]
+}
+
+Rules:
+- Minimum 8 quiz questions
+- Minimum 10 flashcards
+- key_concepts must have 5-8 items
+- JSON only, no extra text`,
+        },
+      ],
     }),
   });
 
-  if (!response.ok) {
-    throw new Error(`Groq API error: ${response.status}`);
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || `Groq API error: ${res.status}`);
   }
 
-  const data = await response.json();
-  const text = Array.isArray(data.output) ? data.output.join("\n") : data.output || "";
-  const raw = text.replace(/^```json\n?/, "").replace(/\n?```$/, "").trim();
+  const data = await res.json();
+  const raw = data.choices[0].message.content
+    .replace(/```json\n?/g, "")
+    .replace(/```\n?/g, "")
+    .trim();
 
   try {
     return JSON.parse(raw);
-  } catch (err) {
-    throw new Error("Failed to parse Groq response. Please try again.");
+  } catch {
+    throw new Error("Failed to parse response. Please try again.");
   }
 };

@@ -1,3 +1,4 @@
+import NoteInput from "../components/NoteInput";
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { BookOpen, Sparkles, Layers, ChevronRight } from "lucide-react";
